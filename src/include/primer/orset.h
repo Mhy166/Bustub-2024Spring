@@ -1,8 +1,9 @@
 #pragma once
 
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
-
 namespace bustub {
 
 /** @brief Unique ID type. */
@@ -60,6 +61,8 @@ class ORSet {
 
  private:
   // TODO(student): Add your private memeber variables to represent ORSet.
+  std::set<std::pair<T, uid_t>> e_;
+  std::set<std::pair<T, uid_t>> t_;
 };
 
 }  // namespace bustub

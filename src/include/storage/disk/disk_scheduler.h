@@ -83,6 +83,7 @@ class DiskScheduler {
    */
   auto CreatePromise() -> DiskSchedulerPromise { return {}; };
 
+
  private:
   /** Pointer to the disk manager. */
   DiskManager *disk_manager_ __attribute__((__unused__));
