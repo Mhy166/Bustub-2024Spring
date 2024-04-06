@@ -20,9 +20,9 @@
 #pragma once
 
 #include <cstdlib>
+#include <mutex>
 #include "common/config.h"
 #include "common/macros.h"
-
 namespace bustub {
 
 static constexpr uint64_t HTABLE_HEADER_PAGE_METADATA_SIZE = sizeof(uint32_t);

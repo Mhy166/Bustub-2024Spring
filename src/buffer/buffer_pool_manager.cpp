@@ -41,7 +41,7 @@ BufferPoolManager::BufferPoolManager(size_t pool_size, DiskManager *disk_manager
 BufferPoolManager::~BufferPoolManager() { delete[] pages_; }
 
 auto BufferPoolManager::NewPage(page_id_t *page_id) -> Page * {
-  std::lock_guard<std::mutex> lock(latch_);
+  std::scoped_lock<std::mutex> lock(latch_);
   bool flag = true;
   Page *page_tmp;
   frame_id_t new_frame;
@@ -104,7 +104,7 @@ auto BufferPoolManager::NewPage(page_id_t *page_id) -> Page * {
 }
 
 auto BufferPoolManager::FetchPage(page_id_t page_id, AccessType access_type) -> Page * {
-  std::lock_guard<std::mutex> lock(latch_);
+  std::scoped_lock<std::mutex> lock(latch_);
   Page *page_tmp;
   //检查缓冲池中有没有页面
   for (size_t i = 0; i < pool_size_; i++) {
@@ -175,7 +175,7 @@ auto BufferPoolManager::FetchPage(page_id_t page_id, AccessType access_type) -> 
 }
 
 auto BufferPoolManager::UnpinPage(page_id_t page_id, bool is_dirty, AccessType access_type) -> bool {
-  std::lock_guard<std::mutex> lock(latch_);
+  std::scoped_lock<std::mutex> lock(latch_);
   for (size_t i = 0; i < pool_size_; i++) {
     Page *page_tmp = &pages_[i];
     if (page_tmp->page_id_ == page_id) {
@@ -198,7 +198,7 @@ auto BufferPoolManager::UnpinPage(page_id_t page_id, bool is_dirty, AccessType a
 }
 
 auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
-  std::lock_guard<std::mutex> lock(latch_);
+  std::scoped_lock<std::mutex> lock(latch_);
   for (size_t i = 0; i < pool_size_; i++) {
     Page *page_tmp = &pages_[i];
     if (page_tmp->page_id_ == page_id) {
@@ -214,7 +214,7 @@ auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
 }
 
 void BufferPoolManager::FlushAllPages() {
-  std::lock_guard<std::mutex> lock(latch_);
+  std::scoped_lock<std::mutex> lock(latch_);
   for (size_t i = 0; i < pool_size_; i++) {
     Page *page_tmp = &pages_[i];
     if (page_tmp->page_id_ != INVALID_PAGE_ID) {
@@ -228,7 +228,7 @@ void BufferPoolManager::FlushAllPages() {
 }
 
 auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
-  std::lock_guard<std::mutex> lock(latch_);
+  std::scoped_lock<std::mutex> lock(latch_);
   auto iter = page_table_.find(page_id);
   if (iter == page_table_.end()) {
     return true;
@@ -262,27 +262,29 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
 auto BufferPoolManager::AllocatePage() -> page_id_t { return next_page_id_++; }
 
 auto BufferPoolManager::FetchPageBasic(page_id_t page_id) -> BasicPageGuard {
-  Page *page_fetch = FetchPage(page_id);
-  BasicPageGuard basic_new_guard(this, page_fetch);
-  return basic_new_guard;
+  return {this,FetchPage(page_id)};
 }
 
 auto BufferPoolManager::FetchPageRead(page_id_t page_id) -> ReadPageGuard {
   Page *page_fetch = FetchPage(page_id);
-  ReadPageGuard readpageguard(this, page_fetch);
-  return readpageguard;
+  if(page_fetch==nullptr){
+    return {this,nullptr};
+  }
+  //page_fetch->RLatch();
+  return {this,page_fetch};
 }
 
 auto BufferPoolManager::FetchPageWrite(page_id_t page_id) -> WritePageGuard {
   Page *page_fetch = FetchPage(page_id);
-  WritePageGuard writepageguard(this, page_fetch);
-  return writepageguard;
+  if(page_fetch==nullptr){
+    return {this,nullptr};
+  }
+  //page_fetch->WLatch();
+  return {this,page_fetch};
 }
 
 auto BufferPoolManager::NewPageGuarded(page_id_t *page_id) -> BasicPageGuard {
-  Page *new_page = NewPage(page_id);
-  BasicPageGuard basic_new_guard(this, new_page);
-  return basic_new_guard;
+  return  {this,NewPage(page_id)};;
 }
 
 }  // namespace bustub

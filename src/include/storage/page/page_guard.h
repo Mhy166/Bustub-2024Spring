@@ -114,7 +114,11 @@ class BasicPageGuard {
 class ReadPageGuard {
  public:
   ReadPageGuard() = default;
-  ReadPageGuard(BufferPoolManager *bpm, Page *page);
+  ReadPageGuard(BufferPoolManager *bpm, Page *page):guard_(bpm,page){
+    if(guard_.page_!=nullptr){
+      guard_.page_->RLatch();
+    }
+  };
   ReadPageGuard(const ReadPageGuard &) = delete;
   auto operator=(const ReadPageGuard &) -> ReadPageGuard & = delete;
 
@@ -174,7 +178,11 @@ class ReadPageGuard {
 class WritePageGuard {
  public:
   WritePageGuard() = default;
-  WritePageGuard(BufferPoolManager *bpm, Page *page);
+  WritePageGuard(BufferPoolManager *bpm, Page *page):guard_(bpm,page){
+    if(guard_.page_!=nullptr){
+      guard_.page_->WLatch();
+    }
+  };
   WritePageGuard(const WritePageGuard &) = delete;
   auto operator=(const WritePageGuard &) -> WritePageGuard & = delete;
 

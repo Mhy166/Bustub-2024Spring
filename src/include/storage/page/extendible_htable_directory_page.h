@@ -22,6 +22,7 @@
 #include <cassert>
 #include <climits>
 #include <cstdlib>
+#include <mutex>
 #include <string>
 
 #include "common/config.h"
