@@ -2,7 +2,7 @@
 //
 //                         BusTub
 //
-// extendible_htable_bucket_page.h
+// extendible_htable_bucket_page.h          可扩展哈希桶页————头文件
 //
 // Identification: src/include/storage/page/extendible_htable_bucket_page.h
 //

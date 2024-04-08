@@ -106,7 +106,7 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
 
   //让目录出现,这个目录绝对会存在或者插入新的
   if(direct_id==INVALID_PAGE_ID){
-    BasicPageGuard header_guard=bpm_->FetchPageBasic(header_page_id_);
+    WritePageGuard header_guard=bpm_->FetchPageWrite(header_page_id_);
     auto header_page=header_guard.AsMut<ExtendibleHTableHeaderPage>();
     InsertToNewDirectory(header_page, header_page->HashToDirectoryIndex(hash), hash, key, value);
     direct_id=header_page->GetDirectoryPageId(header_page->HashToDirectoryIndex(hash));
@@ -123,7 +123,7 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
   //让桶出现
   if(bucket_id==INVALID_PAGE_ID){
     flag=true;
-    BasicPageGuard direct_guard=bpm_->FetchPageBasic(direct_id);
+    WritePageGuard direct_guard=bpm_->FetchPageWrite(direct_id);
     auto direct_page=direct_guard.AsMut<ExtendibleHTableDirectoryPage>();
     InsertToNewBucket(direct_page, direct_page->HashToBucketIndex(hash), key, value);
     bucket_id=direct_page->GetBucketPageId(direct_page->HashToBucketIndex(hash));
@@ -134,7 +134,7 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
     return true;
   }
   //原来页面的保护
-  BasicPageGuard bucket_guard=bpm_->FetchPageBasic(bucket_id);
+  WritePageGuard bucket_guard=bpm_->FetchPageWrite(bucket_id);
   auto bucket_page=bucket_guard.AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
   V val;
   flag=bucket_page->Lookup(key,val,cmp_);
@@ -147,7 +147,7 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
     return true;
   }
   //此时桶必是满的！需要分裂！
-  BasicPageGuard direct_guard_split=bpm_->FetchPageBasic(direct_id);
+  WritePageGuard direct_guard_split=bpm_->FetchPageWrite(direct_id);
   auto direct_page_split=direct_guard_split.AsMut<ExtendibleHTableDirectoryPage>();
   //扩展深度
   if(direct_page_split->GetGlobalDepth()==direct_page_split->GetLocalDepth(direct_page_split->HashToBucketIndex(hash))){
@@ -239,7 +239,7 @@ auto DiskExtendibleHashTable<K, V, KC>::Remove(const K &key, Transaction *transa
   if(bucket_id==INVALID_PAGE_ID){
     return false;
   }
-  BasicPageGuard bucket_guard=bpm_->FetchPageBasic(bucket_id);
+  WritePageGuard bucket_guard=bpm_->FetchPageWrite(bucket_id);
   auto bucket_page=bucket_guard.AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
   V val;
   flag=bucket_page->Lookup(key,val,cmp_);
@@ -256,11 +256,11 @@ auto DiskExtendibleHashTable<K, V, KC>::Remove(const K &key, Transaction *transa
 }
 template <typename K, typename V, typename KC>
 void DiskExtendibleHashTable<K, V, KC>::RemoveCur(page_id_t directory_id, page_id_t bucket_id,uint32_t hash) {
-    BasicPageGuard direct_guard_merge=bpm_->FetchPageBasic(directory_id);
+    WritePageGuard direct_guard_merge=bpm_->FetchPageWrite(directory_id);
     auto direct_page_merge=direct_guard_merge.AsMut<ExtendibleHTableDirectoryPage>();
     uint32_t bucket_idx=direct_page_merge->HashToBucketIndex(hash);//空桶的索引
     if(direct_page_merge->GetGlobalDepth()==0){
-      BasicPageGuard header_guard=bpm_->FetchPageBasic(header_page_id_);
+      WritePageGuard header_guard=bpm_->FetchPageWrite(header_page_id_);
       auto header_page_merge=header_guard.AsMut<ExtendibleHTableHeaderPage>();
       header_page_merge->SetDirectoryPageId(header_page_merge->HashToDirectoryIndex(hash), INVALID_PAGE_ID);
       //bucket_guard.Drop();
@@ -282,7 +282,7 @@ void DiskExtendibleHashTable<K, V, KC>::RemoveCur(page_id_t directory_id, page_i
       return ;
     }
     page_id_t bucket_image_id=direct_page_merge->GetBucketPageId(bucket_image_idx);
-    BasicPageGuard bucket_image_guard=bpm_->FetchPageBasic(bucket_image_id);
+    WritePageGuard bucket_image_guard=bpm_->FetchPageWrite(bucket_image_id);
     auto bucket_image_page=bucket_image_guard.AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
     //不涉及桶内迁移，只涉及链接迁移
     for(uint32_t i=0;i<direct_page_merge->Size();i++){
