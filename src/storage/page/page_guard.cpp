@@ -20,8 +20,8 @@ void BasicPageGuard::Drop() {
       bpm_->UnpinPage(PageId(), is_dirty_);
     }
     page_ = nullptr;
-    is_dirty_=false;
-    bpm_=nullptr;
+    //is_dirty_=false;
+    //bpm_=nullptr;
   }
   is_dirty_=false;
   bpm_=nullptr;

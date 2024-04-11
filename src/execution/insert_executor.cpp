@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -40,19 +41,16 @@ auto InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     if(flag_){
         return false;
     }
-    int32_t insert_sum=0;
+    int insert_sum=0;
     Tuple insert_tuple;
-    RID insert_rid;
     while(true){
-        auto status=child_executor_->Next(&insert_tuple,&insert_rid);
-        if(!status){
-            return false;
+        auto status=child_executor_->Next(&insert_tuple,rid);
+        if(!status){//结束
+            break;
         }
         auto table_cata=GetExecutorContext()->GetCatalog();
         auto table_info=table_cata->GetTable(plan_->GetTableOid());
-        auto heap_ref=std::move(table_info->table_);
-        
-        auto insert_oid=heap_ref->InsertTuple({INVALID_TXN_ID,false},insert_tuple,GetExecutorContext()->GetLockManager(),nullptr,plan_->GetTableOid());
+        auto insert_oid=table_info->table_->InsertTuple({0,false},insert_tuple);
         if(insert_oid==std::nullopt){
             continue;
         }
@@ -63,7 +61,7 @@ auto InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
         for(auto index_info : table_indexs){
             auto attrs=index_info->index_->GetKeyAttrs();
             auto key_schema=index_info->index_->GetKeySchema();
-            index_info->index_->InsertEntry({tuple->KeyFromTuple(table_info->schema_, *key_schema, attrs)}, *insert_oid, nullptr);
+            index_info->index_->InsertEntry({insert_tuple.KeyFromTuple(table_info->schema_, *key_schema, attrs)}, *insert_oid, nullptr);
         }
     }
     //输出insert_sum
@@ -73,5 +71,4 @@ auto InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     *tuple=Tuple(out_value,&GetOutputSchema());
     return true;
 }
-
 }  // namespace bustub

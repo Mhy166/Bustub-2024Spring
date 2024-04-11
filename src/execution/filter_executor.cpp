@@ -23,7 +23,7 @@ auto FilterExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     if (!status) {
       return false;
     }
-
+    //按照孩子节点的模式去计算一个值！
     auto value = filter_expr->Evaluate(tuple, child_executor_->GetOutputSchema());
     if (!value.IsNull() && value.GetAs<bool>()) {
       return true;

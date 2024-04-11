@@ -85,7 +85,7 @@ class Optimizer {
 
   /**
    * @brief optimize seq scan as index scan if there's an index on a table
-   * @note Fall 2023 only: using hash index and only support point lookup
+   * @note Fall 2023 only: using hash index and only support point lookup=
    */
   auto OptimizeSeqScanAsIndexScan(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
 
