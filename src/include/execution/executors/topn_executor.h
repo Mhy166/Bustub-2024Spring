@@ -12,10 +12,12 @@
 
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
-
+#include <queue>
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
 #include "execution/plans/seq_scan_plan.h"
@@ -57,11 +59,14 @@ class TopNExecutor : public AbstractExecutor {
 
   /** @return The size of top_entries_ container, which will be called on each child_executor->Next(). */
   auto GetNumInHeap() -> size_t;
-
+   
  private:
   /** The TopN plan node to be executed */
   const TopNPlanNode *plan_;
   /** The child executor from which tuples are obtained */
   std::unique_ptr<AbstractExecutor> child_executor_;
+  std::size_t heap_n_=0;
+  uint32_t idx_=0;
+  std::vector<Tuple> res_;
 };
 }  // namespace bustub

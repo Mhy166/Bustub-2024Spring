@@ -14,14 +14,52 @@
 
 #include <memory>
 #include <utility>
-
+#include <unordered_map>
+#include <vector>
+#include "common/util/hash_util.h"
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
+#include "execution/plans/abstract_plan.h"
 #include "execution/plans/hash_join_plan.h"
 #include "storage/table/tuple.h"
+#include "type/value_factory.h"
 
+//简单哈希表模仿aggregation。
 namespace bustub {
+struct HJKey{
+  std::vector<Value> hjkey_; 
+  auto operator==(const HJKey &other) const -> bool {
+    for (uint32_t i = 0; i < other.hjkey_.size(); i++) {
+      if (hjkey_[i].CompareEquals(other.hjkey_[i]) != CmpBool::CmpTrue) {
+        return false;
+      }
+    }
+    return true;
+  }
+};
+}// namespace bustub
 
+namespace std {
+
+/** Implements std::hash on HJKey */
+template <>
+struct hash<bustub::HJKey> {
+  auto operator()(const bustub::HJKey &agg_key) const -> std::size_t {
+    size_t curr_hash = 0;
+    for (const auto &key : agg_key.hjkey_) {
+      if (!key.IsNull()) {
+        curr_hash = bustub::HashUtil::CombineHashes(curr_hash, bustub::HashUtil::HashValue(&key));
+      }
+    }
+    return curr_hash;
+  }
+};
+
+}  // namespace std
+namespace bustub {
+struct HJValue{
+  std::vector<Tuple> target_tuple_; 
+};
 /**
  * HashJoinExecutor executes a nested-loop JOIN on two tables.
  */
@@ -54,6 +92,11 @@ class HashJoinExecutor : public AbstractExecutor {
  private:
   /** The HashJoin plan node to be executed. */
   const HashJoinPlanNode *plan_;
+  std::unordered_map<HJKey,HJValue> ht_{};
+  std::unique_ptr<AbstractExecutor> left_child_;
+  std::unique_ptr<AbstractExecutor> right_child_;
+  std::vector<Tuple> tar_tuple_;
+  Tuple left_tuple_;
 };
 
 }  // namespace bustub

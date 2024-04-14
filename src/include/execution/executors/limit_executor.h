@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 
@@ -51,7 +52,7 @@ class LimitExecutor : public AbstractExecutor {
  private:
   /** The limit plan node to be executed */
   const LimitPlanNode *plan_;
-
+  std::size_t idx_=0;
   /** The child executor from which tuples are obtained */
   std::unique_ptr<AbstractExecutor> child_executor_;
 };

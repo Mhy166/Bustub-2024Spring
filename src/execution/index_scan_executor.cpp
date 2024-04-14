@@ -21,7 +21,7 @@ IndexScanExecutor::IndexScanExecutor(ExecutorContext *exec_ctx, const IndexScanP
     : AbstractExecutor(exec_ctx),plan_(plan) {}
 
 void IndexScanExecutor::Init() {
-
+    res_.clear();
     auto index_info=GetExecutorContext()->GetCatalog()->GetIndex(plan_->GetIndexOid());//索引信息
     htable_ = dynamic_cast<HashTableIndexForTwoIntegerColumn *>(index_info->index_.get());//哈希索引表
     std::vector<Value> indexval;

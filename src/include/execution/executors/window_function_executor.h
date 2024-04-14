@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -19,7 +20,12 @@
 #include "execution/executors/abstract_executor.h"
 #include "execution/plans/window_plan.h"
 #include "storage/table/tuple.h"
-
+#include "storage/table/table_iterator.h"
+#include "type/limits.h"
+#include "type/type.h"
+#include "type/type_id.h"
+#include "type/value.h"
+#include "type/value_factory.h"
 namespace bustub {
 
 /**
@@ -84,11 +90,39 @@ class WindowFunctionExecutor : public AbstractExecutor {
   /** @return The output schema for the window aggregation plan */
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); }
 
+  auto GenerateInitialAggregateValue(std::unordered_map<WindowKey, WindowValue>& ht,std::vector<AbstractExpressionRef>& expr,
+    std::vector<WindowFunctionType>& ty,std::vector<bool>& is_flag) -> WindowValue;
+  
+  void CombineAggregateValues(WindowValue *result, const WindowValue &input,std::unordered_map<WindowKey, WindowValue>& ht,std::vector<AbstractExpressionRef>& expr,
+    std::vector<WindowFunctionType>& ty,std::vector<bool>& is_flag,int32_t&rank);
+  
+  void InsertCombine(std::unordered_map<WindowKey, WindowValue>& ht,const WindowKey &agg_key, const WindowValue &agg_val,std::vector<AbstractExpressionRef>& expr,
+    std::vector<WindowFunctionType>& ty,std::vector<bool>& is_flag,int32_t&rank); 
+
+  auto MakeWindowKey(const Tuple *tuple) -> WindowKey {
+    std::vector<Value> keys;
+    for (const auto &expr : plan_->window_functions_) {
+      keys.emplace_back(expr.second.partition_by_[0]->Evaluate(tuple, child_executor_->GetOutputSchema()));
+    }
+    return {keys};
+  }
+  auto MakeWindowValue(const Tuple *tuple) -> WindowValue {
+    std::vector<Value> vals;
+    for (const auto &expr : plan_->window_functions_) {
+      vals.emplace_back(expr.second.function_->Evaluate(tuple, child_executor_->GetOutputSchema()));
+    }
+    return {vals};
+  }
  private:
+ 
   /** The window aggregation plan node to be executed */
   const WindowFunctionPlanNode *plan_;
-
+  std::vector<Tuple> res_;
+  uint32_t idx_=0;
   /** The child executor from which tuples are obtained */
   std::unique_ptr<AbstractExecutor> child_executor_;
+  bool order_flag_=false;
+  std::vector<Tuple> rest_;
+  int32_t rank_=1;
 };
 }  // namespace bustub
