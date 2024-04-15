@@ -12,6 +12,7 @@
 
 #include "concurrency/transaction_manager.h"
 
+#include <atomic>
 #include <memory>
 #include <mutex>  // NOLINT
 #include <optional>
@@ -29,6 +30,7 @@
 #include "execution/execution_common.h"
 #include "storage/table/table_heap.h"
 #include "storage/table/tuple.h"
+#include "type/timestamp_type.h"
 #include "type/type_id.h"
 #include "type/value.h"
 #include "type/value_factory.h"
@@ -40,10 +42,10 @@ auto TransactionManager::Begin(IsolationLevel isolation_level) -> Transaction * 
   auto txn_id = next_txn_id_++;
   auto txn = std::make_unique<Transaction>(txn_id, isolation_level);
   auto *txn_ref = txn.get();
+  
   txn_map_.insert(std::make_pair(txn_id, std::move(txn)));
-
   // TODO(fall2023): set the timestamps here. Watermark updated below.
-
+  txn_ref->read_ts_=last_commit_ts_.load();
   running_txns_.AddTxn(txn_ref->read_ts_);
   return txn_ref;
 }
@@ -52,9 +54,9 @@ auto TransactionManager::VerifyTxn(Transaction *txn) -> bool { return true; }
 
 auto TransactionManager::Commit(Transaction *txn) -> bool {
   std::unique_lock<std::mutex> commit_lck(commit_mutex_);
-
+  
   // TODO(fall2023): acquire commit ts!
-
+  //auto ct=last_commit_ts_.load();
   if (txn->state_ != TransactionState::RUNNING) {
     throw Exception("txn not in running state");
   }
@@ -72,7 +74,9 @@ auto TransactionManager::Commit(Transaction *txn) -> bool {
   std::unique_lock<std::shared_mutex> lck(txn_map_mutex_);
 
   // TODO(fall2023): set commit timestamp + update last committed timestamp here.
-
+  last_commit_ts_++;
+  txn->commit_ts_=last_commit_ts_.load();
+ 
   txn->state_ = TransactionState::COMMITTED;
   running_txns_.UpdateCommitTs(txn->commit_ts_);
   running_txns_.RemoveTxn(txn->read_ts_);
