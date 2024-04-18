@@ -1,3 +1,4 @@
+
 //===----------------------------------------------------------------------===//
 //
 //                         BusTub
@@ -46,6 +47,7 @@ DiskExtendibleHashTable<K, V, KC>::DiskExtendibleHashTable(const std::string &na
       header_max_depth_(header_max_depth),
       directory_max_depth_(directory_max_depth),
       bucket_max_size_(bucket_max_size) {
+        index_name_=name;
         BasicPageGuard header_guard=bpm_->NewPageGuarded(&header_page_id_);
         auto header_page = header_guard.AsMut<ExtendibleHTableHeaderPage>();
         header_page->Init(header_max_depth);
@@ -64,7 +66,7 @@ auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *r
   ReadPageGuard header_guard=bpm_->FetchPageRead(header_page_id_);
   auto header_page = header_guard.As<ExtendibleHTableHeaderPage>();
   page_id_t direct_id=header_page->GetDirectoryPageId(header_page->HashToDirectoryIndex(hash));
-  header_guard.Drop();
+  
 
   if(direct_id==INVALID_PAGE_ID){
     return false;
@@ -73,7 +75,7 @@ auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *r
   ReadPageGuard direct_guard=bpm_->FetchPageRead(direct_id);
   auto direct_page=direct_guard.As<ExtendibleHTableDirectoryPage>();
   page_id_t bucket_id=direct_page->GetBucketPageId(direct_page->HashToBucketIndex(hash));
-  direct_guard.Drop();
+  
 
   if(bucket_id==INVALID_PAGE_ID){
     return false;
@@ -84,6 +86,8 @@ auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *r
   V val;
   flag=bucket_page->Lookup(key,val,cmp_);
   if(flag){result->push_back(val);}
+  direct_guard.Drop();
+  header_guard.Drop();
   bucket_guard.Drop();
   return flag;
 }
@@ -174,10 +178,17 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
     }
   }
   //桶内容分配
+  std::vector<std::pair<K, V>> tmp;
   for(uint32_t i=0;i<bucket_page->Size();i++){
-    if((Hash(bucket_page->KeyAt(i))&static_cast<uint32_t>(pow(2,cl)))!=0){
-      new_bucket_page->Insert(bucket_page->KeyAt(i),bucket_page->ValueAt(i),cmp_);
-      bucket_page->RemoveAt(i);
+    tmp.push_back(std::make_pair(bucket_page->KeyAt(i), bucket_page->ValueAt(i)));
+  }
+  bucket_page->Init(bucket_max_size_);
+  for(uint32_t i=0;i<tmp.size();i++){
+    if((Hash(tmp[i].first)&static_cast<uint32_t>(pow(2,cl)))!=0){
+      new_bucket_page->Insert(tmp[i].first,tmp[i].second,cmp_);   
+    }
+    else{
+      bucket_page->Insert(tmp[i].first,tmp[i].second,cmp_);
     }
   }
   direct_guard_split.Drop();
