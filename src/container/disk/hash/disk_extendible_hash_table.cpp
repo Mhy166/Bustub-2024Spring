@@ -1,4 +1,3 @@
-
 //===----------------------------------------------------------------------===//
 //
 //                         BusTub
@@ -11,9 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <cmath>
-#include <sys/types.h>
-#include <cstdint>
 #include <iostream>
 #include <string>
 #include <utility>
@@ -25,14 +21,12 @@
 #include "common/macros.h"
 #include "common/rid.h"
 #include "common/util/hash_util.h"
-#include "concurrency/transaction.h"
 #include "container/disk/hash/disk_extendible_hash_table.h"
 #include "storage/index/hash_comparator.h"
 #include "storage/page/extendible_htable_bucket_page.h"
 #include "storage/page/extendible_htable_directory_page.h"
 #include "storage/page/extendible_htable_header_page.h"
 #include "storage/page/page_guard.h"
-#include "type/value.h"
 
 namespace bustub {
 
@@ -48,11 +42,11 @@ DiskExtendibleHashTable<K, V, KC>::DiskExtendibleHashTable(const std::string &na
       directory_max_depth_(directory_max_depth),
       bucket_max_size_(bucket_max_size) {
         index_name_=name;
-        BasicPageGuard header_guard=bpm_->NewPageGuarded(&header_page_id_);
+        WritePageGuard header_guard=bpm_->NewPageGuarded(&header_page_id_).UpgradeWrite();
         auto header_page = header_guard.AsMut<ExtendibleHTableHeaderPage>();
         header_page->Init(header_max_depth);
         header_guard.Drop();
-      }
+}
 
 /*****************************************************************************
  * SEARCH
@@ -62,25 +56,18 @@ auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *r
     -> bool {
   uint32_t hash=Hash(key);
   bool flag=false;
-
   ReadPageGuard header_guard=bpm_->FetchPageRead(header_page_id_);
   auto header_page = header_guard.As<ExtendibleHTableHeaderPage>();
   page_id_t direct_id=header_page->GetDirectoryPageId(header_page->HashToDirectoryIndex(hash));
-  
-
   if(direct_id==INVALID_PAGE_ID){
     return false;
   }
-
   ReadPageGuard direct_guard=bpm_->FetchPageRead(direct_id);
   auto direct_page=direct_guard.As<ExtendibleHTableDirectoryPage>();
   page_id_t bucket_id=direct_page->GetBucketPageId(direct_page->HashToBucketIndex(hash));
-  
-
   if(bucket_id==INVALID_PAGE_ID){
     return false;
   }
-  
   ReadPageGuard bucket_guard=bpm_->FetchPageRead(bucket_id);
   auto bucket_page=bucket_guard.As<ExtendibleHTableBucketPage<K,V,KC>>();
   V val;
@@ -95,85 +82,77 @@ auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *r
 /*****************************************************************************
  * INSERTION
  *****************************************************************************/
-
 template <typename K, typename V, typename KC>
 auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Transaction *transaction) -> bool {
   uint32_t hash=Hash(key);
   page_id_t direct_id=INVALID_PAGE_ID;
   page_id_t bucket_id=INVALID_PAGE_ID;
-  bool flag=false;
+  bool flag=true;
   //寻找对应目录
-  ReadPageGuard header_guard=bpm_->FetchPageRead(header_page_id_);
-  auto header_page= header_guard.As<ExtendibleHTableHeaderPage>();
+  WritePageGuard header_guard=bpm_->FetchPageWrite(header_page_id_);
+  auto header_page= header_guard.AsMut<ExtendibleHTableHeaderPage>();
   direct_id=header_page->GetDirectoryPageId(header_page->HashToDirectoryIndex(hash));
-  header_guard.Drop();
-
   //让目录出现,这个目录绝对会存在或者插入新的
   if(direct_id==INVALID_PAGE_ID){
-    WritePageGuard header_guard=bpm_->FetchPageWrite(header_page_id_);
-    auto header_page=header_guard.AsMut<ExtendibleHTableHeaderPage>();
-    InsertToNewDirectory(header_page, header_page->HashToDirectoryIndex(hash), hash, key, value);
-    direct_id=header_page->GetDirectoryPageId(header_page->HashToDirectoryIndex(hash));
-    header_guard.Drop();
-  }
-
-  //寻找桶,至此direct_id必定有了！
-  {
-  ReadPageGuard direct_guard=bpm_->FetchPageRead(direct_id);
-  auto direct_page=direct_guard.As<ExtendibleHTableDirectoryPage>();
-  bucket_id=direct_page->GetBucketPageId(direct_page->HashToBucketIndex(hash));
-  direct_guard.Drop();
-  }
-  //让桶出现
-  if(bucket_id==INVALID_PAGE_ID){
-    flag=true;
-    WritePageGuard direct_guard=bpm_->FetchPageWrite(direct_id);
+    page_id_t new_directory_id;
+    WritePageGuard direct_guard=bpm_->NewPageGuarded(&new_directory_id).UpgradeWrite();
     auto direct_page=direct_guard.AsMut<ExtendibleHTableDirectoryPage>();
-    InsertToNewBucket(direct_page, direct_page->HashToBucketIndex(hash), key, value);
-    bucket_id=direct_page->GetBucketPageId(direct_page->HashToBucketIndex(hash));
+    direct_page->Init(directory_max_depth_);
+    header_page->SetDirectoryPageId(header_page->HashToDirectoryIndex(hash),new_directory_id);
+    page_id_t new_bucket_id;
+    WritePageGuard bucket_guard=bpm_->NewPageGuarded(&new_bucket_id).UpgradeWrite();
+    auto bucket_page=bucket_guard.AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
+    bucket_page->Init(bucket_max_size_);
+    bucket_guard.Drop();
+    direct_page->SetBucketPageId(0,new_bucket_id);
     direct_guard.Drop();
   }
-  //寻找键值对,至此bucket_id必定有了！
-  if(flag){
-    return true;
-  }
-  //原来页面的保护
+  direct_id=header_page->GetDirectoryPageId(header_page->HashToDirectoryIndex(hash));
+  WritePageGuard direct_guard=bpm_->FetchPageWrite(direct_id);
+  auto direct_page=direct_guard.AsMut<ExtendibleHTableDirectoryPage>();
+  bucket_id=direct_page->GetBucketPageId(direct_page->HashToBucketIndex(hash));
   WritePageGuard bucket_guard=bpm_->FetchPageWrite(bucket_id);
   auto bucket_page=bucket_guard.AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
   V val;
   flag=bucket_page->Lookup(key,val,cmp_);
   if(flag){
+    header_guard.Drop();
+    direct_guard.Drop();
+    bucket_guard.Drop();
     return false;
   }
   //此时没查到，桶中无此条目！下面看未满时！
   if(!bucket_page->IsFull()){
     bucket_page->Insert(key,value,cmp_);
+    header_guard.Drop();
+    direct_guard.Drop();
+    bucket_guard.Drop();
     return true;
   }
   //此时桶必是满的！需要分裂！
-  WritePageGuard direct_guard_split=bpm_->FetchPageWrite(direct_id);
-  auto direct_page_split=direct_guard_split.AsMut<ExtendibleHTableDirectoryPage>();
-  //扩展深度
-  if(direct_page_split->GetGlobalDepth()==direct_page_split->GetLocalDepth(direct_page_split->HashToBucketIndex(hash))){
-    if(direct_page_split->GetGlobalDepth()==directory_max_depth_){
+  if(direct_page->GetGlobalDepth()==direct_page->GetLocalDepth(direct_page->HashToBucketIndex(hash))){
+    if(direct_page->GetGlobalDepth()==directory_max_depth_){
+      header_guard.Drop();
+      direct_guard.Drop();
+      bucket_guard.Drop();
       return false;
     }
-    direct_page_split->IncrGlobalDepth();
+    direct_page->IncrGlobalDepth();
   }
   //至此一定保证可以进行本地扩展了,先创建新桶
   page_id_t new_bucket_id;
-  BasicPageGuard new_bucket_guard=bpm_->NewPageGuarded(&new_bucket_id);
+  WritePageGuard new_bucket_guard=bpm_->NewPageGuarded(&new_bucket_id).UpgradeWrite();
   auto new_bucket_page=new_bucket_guard.AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
   new_bucket_page->Init(bucket_max_size_);
   //new_bucket_guard.Drop();
   //更改映射桶
   //链接映射
-  uint32_t cl=direct_page_split->GetLocalDepth(direct_page_split->HashToBucketIndex(hash));
-  for(uint32_t i=0;i<direct_page_split->Size();i++){
-    if(direct_page_split->GetBucketPageId(i)==bucket_id){
-      direct_page_split->IncrLocalDepth(i);
+  uint32_t cl=direct_page->GetLocalDepth(direct_page->HashToBucketIndex(hash));
+  for(uint32_t i=0;i<direct_page->Size();i++){
+    if(direct_page->GetBucketPageId(i)==bucket_id){
+      direct_page->IncrLocalDepth(i);
       if((i&static_cast<uint32_t>(pow(2,cl)))!=0){
-        direct_page_split->SetBucketPageId(i,new_bucket_id);
+        direct_page->SetBucketPageId(i,new_bucket_id);
       }
     }
   }
@@ -191,38 +170,12 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
       bucket_page->Insert(tmp[i].first,tmp[i].second,cmp_);
     }
   }
-  direct_guard_split.Drop();
+  header_guard.Drop();
+  direct_guard.Drop();
   bucket_guard.Drop();
   new_bucket_guard.Drop();
   return Insert(key,value,transaction);
 }
-
-template <typename K, typename V, typename KC>
-auto DiskExtendibleHashTable<K, V, KC>::InsertToNewDirectory(ExtendibleHTableHeaderPage *header, uint32_t directory_idx,
-                                                             uint32_t hash, const K &key, const V &value) -> bool {
-  page_id_t new_directory_id;
-  BasicPageGuard direct_guard=bpm_->NewPageGuarded(&new_directory_id);
-  auto direct_page=direct_guard.AsMut<ExtendibleHTableDirectoryPage>();
-  direct_page->Init(directory_max_depth_);
-  header->SetDirectoryPageId(directory_idx,new_directory_id);
-  direct_guard.Drop();
-  return true;
-}
-
-template <typename K, typename V, typename KC>
-auto DiskExtendibleHashTable<K, V, KC>::InsertToNewBucket(ExtendibleHTableDirectoryPage *directory, uint32_t bucket_idx,
-                                                          const K &key, const V &value) -> bool {
-  page_id_t new_bucket_id;
-  BasicPageGuard bucket_guard=bpm_->NewPageGuarded(&new_bucket_id);
-  auto bucket_page=bucket_guard.AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
-  bucket_page->Init(bucket_max_size_);
-  bucket_page->Insert(key,value,cmp_);
-  directory->SetBucketPageId(bucket_idx,new_bucket_id);
-  directory->SetLocalDepth(bucket_idx, directory->GetGlobalDepth());
-  bucket_guard.Drop();
-  return true;
-}
-
 /*****************************************************************************
  * REMOVE
  *****************************************************************************/
@@ -232,21 +185,16 @@ auto DiskExtendibleHashTable<K, V, KC>::Remove(const K &key, Transaction *transa
   page_id_t direct_id=INVALID_PAGE_ID;
   page_id_t bucket_id=INVALID_PAGE_ID;
   bool flag=false;
-
-  ReadPageGuard header_guard=bpm_->FetchPageRead(header_page_id_);
-  auto header_page= header_guard.As<ExtendibleHTableHeaderPage>();
+  WritePageGuard header_guard=bpm_->FetchPageWrite(header_page_id_);
+  auto header_page= header_guard.AsMut<ExtendibleHTableHeaderPage>();
   direct_id=header_page->GetDirectoryPageId(header_page->HashToDirectoryIndex(hash));
-  header_guard.Drop();
   if(direct_id==INVALID_PAGE_ID){
     return false;
   }
 
-  {
-  ReadPageGuard direct_guard=bpm_->FetchPageRead(direct_id);
-  auto direct_page=direct_guard.As<ExtendibleHTableDirectoryPage>();
+  WritePageGuard direct_guard=bpm_->FetchPageWrite(direct_id);
+  auto direct_page=direct_guard.AsMut<ExtendibleHTableDirectoryPage>();
   bucket_id=direct_page->GetBucketPageId(direct_page->HashToBucketIndex(hash));
-  direct_guard.Drop();
-  }
   if(bucket_id==INVALID_PAGE_ID){
     return false;
   }
@@ -260,61 +208,45 @@ auto DiskExtendibleHashTable<K, V, KC>::Remove(const K &key, Transaction *transa
   //查到了！
   bucket_page->Remove(key,cmp_);
   if(bucket_page->IsEmpty()){
-    bucket_guard.Drop();
-    RemoveCur(direct_id, bucket_id,hash);
-  }
-  return true;
-}
-template <typename K, typename V, typename KC>
-void DiskExtendibleHashTable<K, V, KC>::RemoveCur(page_id_t directory_id, page_id_t bucket_id,uint32_t hash) {
-    WritePageGuard direct_guard_merge=bpm_->FetchPageWrite(directory_id);
-    auto direct_page_merge=direct_guard_merge.AsMut<ExtendibleHTableDirectoryPage>();
-    uint32_t bucket_idx=direct_page_merge->HashToBucketIndex(hash);//空桶的索引
-    if(direct_page_merge->GetGlobalDepth()==0){
-      WritePageGuard header_guard=bpm_->FetchPageWrite(header_page_id_);
-      auto header_page_merge=header_guard.AsMut<ExtendibleHTableHeaderPage>();
-      header_page_merge->SetDirectoryPageId(header_page_merge->HashToDirectoryIndex(hash), INVALID_PAGE_ID);
-      //bucket_guard.Drop();
-      direct_guard_merge.Drop();
-      header_guard.Drop();
-      bpm_->DeletePage(directory_id);
-      bpm_->DeletePage(bucket_id);
-      return ;
+    uint32_t bucket_idx=direct_page->HashToBucketIndex(hash);//空桶的索引
+    if(direct_page->GetGlobalDepth()==0){
+      header_page->SetDirectoryPageId(header_page->HashToDirectoryIndex(hash), INVALID_PAGE_ID);
+      direct_page->SetBucketPageId(0, INVALID_PAGE_ID);
+      return true;
     }
     //目录至少有俩,先找image
     uint32_t bucket_image_idx;
-    if(bucket_idx<static_cast<uint32_t>(pow(2,direct_page_merge->GetGlobalDepth()-1))){
-      bucket_image_idx=bucket_idx+static_cast<uint32_t>(pow(2, direct_page_merge->GetGlobalDepth()-1));
+    if(bucket_idx<static_cast<uint32_t>(pow(2,direct_page->GetLocalDepth(bucket_idx)-1))){
+      bucket_image_idx=bucket_idx+static_cast<uint32_t>(pow(2, direct_page->GetLocalDepth(bucket_idx)-1));
     }
     else{
-      bucket_image_idx=bucket_idx-static_cast<uint32_t>(pow(2, direct_page_merge->GetGlobalDepth()-1));
+      bucket_image_idx=bucket_idx-static_cast<uint32_t>(pow(2, direct_page->GetLocalDepth(bucket_idx)-1));
     }
-    if(direct_page_merge->GetLocalDepth(bucket_idx)!=direct_page_merge->GetLocalDepth(bucket_image_idx)){
-      return ;
+    if(direct_page->GetLocalDepth(bucket_idx)!=direct_page->GetLocalDepth(bucket_image_idx)){
+      return true;
     }
-    page_id_t bucket_image_id=direct_page_merge->GetBucketPageId(bucket_image_idx);
-    WritePageGuard bucket_image_guard=bpm_->FetchPageWrite(bucket_image_id);
-    auto bucket_image_page=bucket_image_guard.AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
+    page_id_t bucket_image_id=direct_page->GetBucketPageId(bucket_image_idx);
     //不涉及桶内迁移，只涉及链接迁移
-    for(uint32_t i=0;i<direct_page_merge->Size();i++){
-      if(direct_page_merge->GetBucketPageId(i)==bucket_id){
-        direct_page_merge->SetBucketPageId(i, bucket_image_id);
-        direct_page_merge->DecrLocalDepth(i);
+    for(uint32_t i=0;i<direct_page->Size();i++){
+      if(direct_page->GetBucketPageId(i)==bucket_id){
+        direct_page->SetBucketPageId(i, bucket_image_id);
+        direct_page->DecrLocalDepth(i);
       }
-      else if(direct_page_merge->GetBucketPageId(i)==bucket_image_id){
-        direct_page_merge->DecrLocalDepth(i);
+      else if(direct_page->GetBucketPageId(i)==bucket_image_id){
+        direct_page->DecrLocalDepth(i);
       }
     }
     bpm_->DeletePage(bucket_id);
-    if(direct_page_merge->CanShrink()){
-      direct_page_merge->DecrGlobalDepth();
+    if(direct_page->CanShrink()){
+      direct_page->DecrGlobalDepth();
     }
-    if(bucket_image_page->IsEmpty()){
-      RemoveCur(directory_id, bucket_image_id, hash);
-    }
-    direct_guard_merge.Drop();
-    bucket_image_guard.Drop();
+    direct_guard.Drop();
+    header_guard.Drop();
+    bucket_guard.Drop();
+  }
+  return true;
 }
+
 template class DiskExtendibleHashTable<int, int, IntComparator>;
 template class DiskExtendibleHashTable<GenericKey<4>, RID, GenericComparator<4>>;
 template class DiskExtendibleHashTable<GenericKey<8>, RID, GenericComparator<8>>;

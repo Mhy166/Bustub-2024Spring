@@ -10,6 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+//中心事务管理器。
+
 #pragma once
 
 #include <atomic>
@@ -113,6 +115,7 @@ class TransactionManager {
   /** The last committed timestamp. */
   std::atomic<timestamp_t> last_commit_ts_{0};
 
+  table_oid_t t_oit_;
   /** Catalog */
   Catalog *catalog_;
 

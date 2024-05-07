@@ -13,6 +13,8 @@
 #include <vector>
 #include <set>
 #include "catalog/schema.h"
+#include "concurrency/transaction_manager.h"
+#include "execution/execution_common.h"
 #include "storage/table/tuple.h"
 #include "type/value.h"
 
@@ -55,22 +57,82 @@ auto IndexScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         if(idx_==res_.size()){
             return false;
         }
-        if(table_info->table_->GetTuple(res_[idx_]).first.is_deleted_){
-            idx_++;
-            continue;
+        auto [ba_meta,ba_tuple,ba_link] =bustub::GetTupleAndUndoLink(GetExecutorContext()->GetTransactionManager()
+        ,table_info->table_.get(),res_[idx_]);
+        auto local_ts=GetExecutorContext()->GetTransaction()->GetReadTs();
+        //MVCC
+        bool do_this=false;
+        if(ba_meta.ts_<TXN_START_ID){
+            if(ba_meta.ts_<=local_ts){//case 1
+                do_this=true;
+            }
         }
-        Tuple tuple_con=table_info->table_->GetTuple(res_[idx_]).second;
-        if(expr!=nullptr){
-            if(!expr->Evaluate(&tuple_con,GetOutputSchema()).GetAs<bool>()){
+        else{
+            if(ba_meta.ts_==GetExecutorContext()->GetTransaction()->GetTransactionTempTs()){//case 2
+                do_this=true;
+            }
+        }
+        if(do_this){//就处理基元组了
+            if(ba_meta.is_deleted_){
                 idx_++;
                 continue;
             }
+            if(expr!=nullptr&&!expr->Evaluate(&ba_tuple,GetOutputSchema()).GetAs<bool>()){
+                idx_++;
+                continue;
+            }
+            *rid=ba_tuple.GetRid();
+            *tuple=ba_tuple;
+            idx_++;
+            return true;
         }
-        break;
+        //case 3 重构版本
+        *rid=ba_tuple.GetRid();
+        const auto &txnmgr=GetExecutorContext()->GetTransactionManager();
+        std::optional<UndoLink> undo_link=txnmgr->GetUndoLink(*rid);
+        std::optional<UndoLog> undo_log=std::nullopt;
+        if(undo_link!=std::nullopt){
+            undo_log=txnmgr->GetUndoLog(undo_link.value());
+        }
+        if(undo_log==std::nullopt){//不返回
+            idx_++;
+            continue;
+        }
+        std::vector<UndoLog> res_log;
+        bool flag=false;
+        bool delete_flag=false;
+        while(true){
+            res_log.push_back(*undo_log);
+            if(undo_log->ts_<=local_ts){
+                if(undo_log->is_deleted_){
+                    delete_flag=true;
+                }
+                break;
+            }
+            if(undo_log->prev_version_.prev_txn_==INVALID_TXN_ID){//最后一个
+                if(undo_log->ts_>local_ts){
+                    flag=true;
+                }
+                break;
+            }
+            undo_log=txnmgr->GetUndoLog(undo_log->prev_version_);
+        }
+        if(flag||delete_flag){
+            idx_++;
+            continue;
+        }
+        auto re_ruple=bustub::ReconstructTuple(&GetOutputSchema(),ba_tuple,ba_meta,res_log);
+        if(re_ruple.has_value()){
+            if(expr!=nullptr&&!expr->Evaluate(&re_ruple.value(),GetOutputSchema()).GetAs<bool>()){
+                idx_++;
+                continue;
+            }
+            *tuple=re_ruple.value();
+            idx_++;
+            return true;
+        }
+        idx_++;
     }
-    *tuple=table_info->table_->GetTuple(res_[idx_]).second;
-    *rid=res_[idx_];
-    idx_++;
     return true;
 }
 

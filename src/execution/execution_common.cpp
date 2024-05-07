@@ -95,11 +95,16 @@ void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const Table
     //输出版本链
     auto undolink=txn_mgr->GetUndoLink(tuple.GetRid());
     std::optional<UndoLog> undolog=std::nullopt;
-    if(undolink!=std::nullopt){
-      undolog=txn_mgr->GetUndoLog(undolink.value());
+    if(undolink==std::nullopt){
+      ++iter;
+      continue;
     }
     std::vector<UndoLog> remake_log; 
     while(true){
+      if(txn_mgr->txn_map_.find(undolink->prev_txn_)==txn_mgr->txn_map_.end()){
+        break;
+      }
+      undolog=txn_mgr->GetUndoLog(undolink.value());
       fmt::print(stderr,"  -->txn{}@{} : ",undolink->prev_txn_-TXN_START_ID,undolink->prev_log_idx_);
       remake_log.push_back(undolog.value());
       auto remake_tuple=bustub::ReconstructTuple(&schema,tuple,meta,remake_log);
@@ -130,7 +135,6 @@ void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const Table
         break;
       }
       undolink=undolog->prev_version_;
-      undolog=txn_mgr->GetUndoLog(undolink.value());
     }
     fmt::println(stderr," ");
     ++iter;
@@ -151,5 +155,4 @@ void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const Table
   //   txn6@0 (6, <NULL>, <NULL>) ts=2
   //   txn3@1 (7, _, _) ts=1
 }
-
 }  // namespace bustub

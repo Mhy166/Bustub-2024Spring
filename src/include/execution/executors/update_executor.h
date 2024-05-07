@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -44,6 +45,7 @@ class UpdateExecutor : public AbstractExecutor {
   /** Initialize the update */
   void Init() override;
 
+  auto CheckFunction(const TupleMeta& meta, const Tuple& table, RID rid) -> bool;
   /**
    * Yield the next tuple from the update.
    * @param[out] tuple The next tuple produced by the update
@@ -63,7 +65,10 @@ class UpdateExecutor : public AbstractExecutor {
 
   /** Metadata identifying the table that should be updated */
   const TableInfo *table_info_;
-  bool flags_=false;
+  bool exe_flag_{false};
+  bool pk_{false};
+  std::vector<Tuple> tuple_buf_;
+  std::vector<RID> rid_buf_;
   /** The child executor to obtain value from */
   std::unique_ptr<AbstractExecutor> child_executor_;
 };

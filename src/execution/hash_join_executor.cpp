@@ -56,7 +56,7 @@ auto HashJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         res.push_back(right_tuple.GetValue(&right_child_->GetOutputSchema(), i0));
       }
       *tuple=Tuple(res,&GetOutputSchema());
-      *rid=tuple->GetRid();
+      //*rid=tuple->GetRid();
       return true;
     }
 
@@ -77,7 +77,7 @@ auto HashJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         res.push_back(ValueFactory::GetNullValueByType(right_child_->GetOutputSchema().GetColumn(i0).GetType()));
       }
       *tuple=Tuple(res,&GetOutputSchema());
-      *rid=tuple->GetRid();
+      //*rid=tuple->GetRid();
       return true;
     }
     if(ht_.count(hjkey)!=0){

@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <mutex>
 #include <queue>
 #include <string>
 #include <utility>
@@ -132,6 +133,7 @@ class DiskExtendibleHashTable {
   uint32_t directory_max_depth_;
   uint32_t bucket_max_size_;
   page_id_t header_page_id_;
+  //std::mutex latch_;
 };
 
 }  // namespace bustub

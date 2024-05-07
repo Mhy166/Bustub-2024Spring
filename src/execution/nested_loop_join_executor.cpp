@@ -56,7 +56,7 @@ auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
             res.push_back(right_tuple_->GetValue(&child_executor_r_->GetOutputSchema(), i0));
           }
           *tuple=Tuple(res,&GetOutputSchema());
-          *rid=tuple->GetRid();
+          //*rid=tuple->GetRid();
           flag_=false;
           return true; 
         }
@@ -71,7 +71,7 @@ auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
             res.push_back(ValueFactory::GetNullValueByType(child_executor_r_->GetOutputSchema().GetColumn(i0).GetType()));
           }
           *tuple=Tuple(res,&GetOutputSchema());
-          *rid=tuple->GetRid();
+          //*rid=tuple->GetRid();
           flag_=false;
           child_executor_r_->Init();
           return true; 

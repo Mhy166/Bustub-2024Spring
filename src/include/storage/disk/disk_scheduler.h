@@ -72,7 +72,7 @@ class DiskScheduler {
    * return until ~DiskScheduler() is called. At that point you need to make sure that the function does return.
    */
   void StartWorkerThread();
-
+  void StartWork(DiskRequest r);
   using DiskSchedulerPromise = std::promise<bool>;
 
   /**
